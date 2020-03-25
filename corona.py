@@ -175,7 +175,7 @@ def get_closed_cases(country_row: list = None) -> str:
 
 def get_situation(country_row: list = None) -> str:
     """Get details of the current situation in prettified, printable form."""
-    data = [
+    overview_data = [
             [Colors.BOLD + "Total Cases: ", get_total_cases(country_row) + Colors.RESET],
             [Colors.YELLOW + "New Cases: ", get_new_cases(country_row) + Colors.RESET],
             [Colors.RED + "Total Deaths: ", get_total_deaths(country_row) + Colors.RESET],
@@ -186,16 +186,16 @@ def get_situation(country_row: list = None) -> str:
             [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
             [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET]
         ]
-    return tabulate(data, colalign=("left", "right"))
+    return tabulate(overview_data, colalign=("left", "right"))
 
 
 def get_new_situation(country_row: list = None) -> str:
     """Get details of what changed today, only new cases and new deaths."""
-    data = [
+    new_data = [
             [Colors.YELLOW + "New Cases: ", get_new_cases(country_row) + Colors.RESET],
             [Colors.RED + "New Deaths: ", get_new_deaths(country_row) + Colors.RESET],
         ]
-    return tabulate(data, colalign=("left", "right"))
+    return tabulate(new_data, colalign=("left", "right"))
 
 
 @lru_cache(maxsize=None)
@@ -208,15 +208,6 @@ def get_row(country: str = None) -> list:
             print("Country not found. So showing overview instead.")
             return total_row
     return total_row
-
-
-def get_deaths(country_row: list = None) -> str:
-    """Get number of deaths, total and new."""
-    data = [
-        [Colors.RED + "Total Deaths: ", get_total_deaths(country_row) + Colors.RESET],
-        [Colors.RED + "New Deaths: ", get_new_deaths(country_row) + Colors.RESET]
-    ]
-    return tabulate(data, colalign=("left", "right"))
 
 
 row = get_row(args.country)
