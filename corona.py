@@ -211,10 +211,8 @@ def get_row(country: str = None) -> list:
 
 
 row = get_row(args.country)
-header = f"Situation in {args.country}:" if args.country else "Overview:"
 
-
-if args.overview:
+if args.overview or (args.country and len(sys.argv) == 2) or len(sys.argv) == 1:
     print(get_situation(row))
     exit()
 
@@ -241,8 +239,5 @@ if args.recovered:
 if args.closed:
     data.append([Colors.CYAN + "Closed Cases: ", get_closed_cases(row) + Colors.RESET])
 
-if len(sys.argv) > 1:
-    if data:
-        print(tabulate(data, colalign=("left", "right")))
-else:
-    print("No arguments passed. Use '-h' or '--help' to see possible usages.")
+if data:
+    print(tabulate(data, colalign=("left", "right")))
