@@ -5,7 +5,6 @@ from functools import lru_cache
 import locale
 import json
 import os
-import sys
 
 import appdirs
 import bs4
@@ -41,58 +40,79 @@ class Colors:
 
 
 locale.setlocale(locale.LC_ALL, '')
-parser = argparse.ArgumentParser(description="Get up-to-date statistics about the Coronavirus outbreak")
-mgroup = parser.add_mutually_exclusive_group()
-mgroup.add_argument("-o", "--overview", help="Current overview of the outbreak", action="store_true")
-mgroup.add_argument("-l", "--latest", help="Today's incidents", action="store_true")
-group = parser.add_argument_group('additional arguments',
-                                  "these only work when '-o' or '-l' are not being used but can be combined")
-group.add_argument("-c", "--closed", help="Number of closed cases, closed either by death or by recovery",
-                   action="store_true")
-group.add_argument("-a", "--active", help="Number of patients in treatment", action="store_true")
-group.add_argument("-r", "--recovered", help="Number of recovered patients", action="store_true")
-group.add_argument("-d", "--dead", help="Number of deaths that have occurred, in total and today", action="store_true")
-group.add_argument("-s", "--serious", help="Number of patients in critical or serious conditions", action="store_true")
+parser = argparse.ArgumentParser(
+    prog="corona.py",
+    description="Get up-to-date statistics about the Coronavirus outbreak",
+    argument_default=argparse.SUPPRESS
+)
+parser.add_argument("-l", "--latest", help="Today's incidents", action="store_true")
+parser.add_argument("-o", "--offline", help="Run in offline mode", action="store_true")
+parser.add_argument("-c", "--closed", help="Number of closed cases, closed either by death or by recovery",
+                    action="store_true")
+parser.add_argument("-a", "--active", help="Number of patients in treatment", action="store_true")
+parser.add_argument("-r", "--recovered", help="Number of recovered patients", action="store_true")
+parser.add_argument("-d", "--dead", help="Number of deaths that have occurred, in total and today", action="store_true")
+parser.add_argument("-s", "--serious", help="Number of patients in critical or serious conditions", action="store_true")
 parser.add_argument("country", nargs='?', type=str, help="Country to show data of; if not given, global stats is shown")
 args = parser.parse_args()
+args_dict = vars(args)
 
 cache_dir = appdirs.user_cache_dir('coronapy', appauthor=False)
 cache_file_path = os.path.join(cache_dir, 'data.json')
 
-try:
-    url = "https://www.worldometers.info/coronavirus"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                      'Chrome/70.0.3538.77 Safari/537.36'
-    }
 
-    r = requests.get(url, headers=headers)
-    soup = bs4.BeautifulSoup(r.text, 'lxml')
-    table = soup.find('table')
-    rows = table.find_all('tr')
+def get_online_outbreak_data() -> dict:
+    """Get data of the outbreak from the Worldometers.info site."""
+    try:
+        url = "https://www.worldometers.info/coronavirus"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/70.0.3538.77 Safari/537.36'
+        }
 
-    # Prepare a dictionary with all the data needed.
-    outbreak_data = {}
+        r = requests.get(url, headers=headers)
+        soup = bs4.BeautifulSoup(r.text, 'lxml')
+        table = soup.find('table')
+        rows = table.find_all('tr')
 
-    for tr in rows:
-        td = tr.find_all('td')
-        table_row = [e.text for e in td]
-        if table_row:
-            outbreak_data.setdefault(table_row[0].lower(), table_row[1:])
+        # Prepare a dictionary with all the data needed.
+        online_outbreak_data = {}
 
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir)
-    with open(cache_file_path, 'w') as cache_file:
-        json.dump(outbreak_data, cache_file)
+        for tr in rows:
+            td = tr.find_all('td')
+            table_row = [e.text for e in td]
+            if table_row:
+                online_outbreak_data.setdefault(table_row[0].lower(), table_row[1:])
 
-except requests.exceptions.ConnectionError:
+        if not os.path.exists(cache_dir):
+            os.mkdir(cache_dir)
+        with open(cache_file_path, 'w') as cache_file:
+            json.dump(online_outbreak_data, cache_file)
+        return online_outbreak_data
+    except requests.exceptions.ConnectionError:
+        print("Network issue detected. Accessing cached data instead.")
+        return None
+
+
+def get_offline_outbreak_data() -> dict:
+    """Get data of the outbreak from local cache, either as fallback or in offline mode."""
     try:
         with open(cache_file_path, 'r') as cache_file:
-            outbreak_data = json.load(cache_file)
-        print("Network issue detected. Using cached data.")
+            offline_outbreak_data = json.load(cache_file)
+        return offline_outbreak_data
     except FileNotFoundError:
-        print("Network issue detected. No cached data found. Exiting.")
-        exit(1)
+        print("No cached data found.")
+        return None
+
+
+if 'offline' in args_dict:
+    outbreak_data = get_offline_outbreak_data()
+    del args_dict['offline']  # Delete dictionary item that has served its purpose.
+else:
+    outbreak_data = get_online_outbreak_data() or get_offline_outbreak_data()
+
+if outbreak_data is None:
+    exit()
 
 total_row = outbreak_data["total:"]
 
@@ -189,15 +209,6 @@ def get_situation(country_row: list = None) -> str:
     return tabulate(overview_data, colalign=("left", "right"))
 
 
-def get_new_situation(country_row: list = None) -> str:
-    """Get details of what changed today, only new cases and new deaths."""
-    new_data = [
-            [Colors.YELLOW + "New Cases: ", get_new_cases(country_row) + Colors.RESET],
-            [Colors.RED + "New Deaths: ", get_new_deaths(country_row) + Colors.RESET],
-        ]
-    return tabulate(new_data, colalign=("left", "right"))
-
-
 @lru_cache(maxsize=None)
 def get_row(country: str = None) -> list:
     """Get the country_row that is to be passed as a parameter to other fucntions."""
@@ -210,33 +221,32 @@ def get_row(country: str = None) -> list:
     return total_row
 
 
-row = get_row(args.country)
+country = getattr(args, 'country', None)
+row = get_row(country)
 
-if args.overview or (args.country and len(sys.argv) == 2) or len(sys.argv) == 1:
+if len(args_dict) == 0 or (len(args_dict) == 1 and 'country' in args_dict):
     print(get_situation(row))
-    exit()
-
-if args.latest:
-    print(get_new_situation(row))
     exit()
 
 data = []
 
-if args.active:
+if 'active' in args_dict:
     data.append([Colors.PURPLE + "Active Cases: ", get_active_cases(row) + Colors.RESET])
-    data.append([Colors.YELLOW + "New Cases: ", get_new_cases(row) + Colors.RESET])
 
-if args.dead:
-    data.append([Colors.RED + "Total Deaths: ", get_total_deaths(row) + Colors.RESET])
+if 'latest' in args_dict:
+    data.append([Colors.YELLOW + "New Cases: ", get_new_cases(row) + Colors.RESET])
     data.append([Colors.RED + "New Deaths: ", get_new_deaths(row) + Colors.RESET])
 
-if args.serious:
+if 'dead' in args_dict:
+    data.append([Colors.RED + "Total Deaths: ", get_total_deaths(row) + Colors.RESET])
+
+if 'serious' in args_dict:
     data.append([Colors.ORANGE + "Serious Cases: ", get_serious_cases(row) + Colors.RESET])
 
-if args.recovered:
+if 'recovered' in args_dict:
     data.append([Colors.GREEN + "Total Recovered: ", get_total_recovered(row) + Colors.RESET])
 
-if args.closed:
+if 'closed' in args_dict:
     data.append([Colors.CYAN + "Closed Cases: ", get_closed_cases(row) + Colors.RESET])
 
 if data:
