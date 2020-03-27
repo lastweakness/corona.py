@@ -1,6 +1,24 @@
 #!/usr/bin/python
+# Copyright (C) 2020 fushinari
+#
+# This file is part of corona.py.
+#
+# corona.py is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# corona.py is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with corona.py.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import argparse
+from datetime import datetime, timezone
 from functools import lru_cache
 import locale
 import json
@@ -53,6 +71,8 @@ parser.add_argument("-a", "--active", help="Number of patients in treatment", ac
 parser.add_argument("-r", "--recovered", help="Number of recovered patients", action="store_true")
 parser.add_argument("-d", "--dead", help="Number of deaths that have occurred, in total and today", action="store_true")
 parser.add_argument("-s", "--serious", help="Number of patients in critical or serious conditions", action="store_true")
+parser.add_argument("-t", "--table", help="Print the complete table", action="store_true")
+parser.add_argument("-n", "--news", help="Print today's news", action="store_true")
 parser.add_argument("country", nargs='?', type=str, help="Country to show data of; if not given, global stats is shown")
 args = parser.parse_args()
 args_dict = vars(args)
@@ -76,13 +96,26 @@ def get_online_outbreak_data() -> dict:
         rows = table.find_all('tr')
 
         # Prepare a dictionary with all the data needed.
-        online_outbreak_data = {}
+        online_outbreak_table = {}
 
         for tr in rows:
             td = tr.find_all('td')
             table_row = [e.text for e in td]
             if table_row:
-                online_outbreak_data.setdefault(table_row[0].lower(), table_row[1:])
+                online_outbreak_table.setdefault(table_row[0].lower(), table_row[1:])
+
+        try:
+            news_div = soup.find('div', {'id': 'newsdate' + datetime.now(timezone.utc).strftime("%Y-%m-%d")})
+            news_li = news_div.find_all('li')
+            news_table = [new.text.replace('[source]', '').strip() for new in news_li]
+        except AttributeError:
+            news_table = []
+
+        online_outbreak_data = {
+            'time': datetime.now().strftime("%Y-%m-%d %H:%M"),
+            'news': news_table,
+            'table': online_outbreak_table
+        }
 
         if not os.path.exists(cache_dir):
             os.mkdir(cache_dir)
@@ -90,7 +123,7 @@ def get_online_outbreak_data() -> dict:
             json.dump(online_outbreak_data, cache_file)
         return online_outbreak_data
     except requests.exceptions.ConnectionError:
-        print("Network issue detected. Accessing cached data instead.")
+        print("Network issue detected. Accessing offline data instead.")
         return None
 
 
@@ -99,9 +132,10 @@ def get_offline_outbreak_data() -> dict:
     try:
         with open(cache_file_path, 'r') as cache_file:
             offline_outbreak_data = json.load(cache_file)
+        print(f"Offline data is from {offline_outbreak_data['time']}.")
         return offline_outbreak_data
     except FileNotFoundError:
-        print("No cached data found.")
+        print("No offline data found.")
         return None
 
 
@@ -114,7 +148,7 @@ else:
 if outbreak_data is None:
     exit()
 
-total_row = outbreak_data["total:"]
+total_row = outbreak_data['table']["total:"]
 
 
 def get_data(input_list: list, index: int) -> str:
@@ -186,6 +220,13 @@ def get_cases_by_pop(country_row: list = None) -> str:
     return get_data(total_row, 7) or '-'
 
 
+def get_deaths_by_pop(country_row: list = None) -> str:
+    """Get the deaths by every 1 million population ratio."""
+    if country_row:
+        return get_data(country_row, 8) or '-'
+    return get_data(total_row, 8) or '-'
+
+
 def get_closed_cases(country_row: list = None) -> str:
     """Get the number of cases that have been closed, either by death or by recovery."""
     total_cases = get_total_cases(country_row).replace(',', '')
@@ -204,7 +245,8 @@ def get_situation(country_row: list = None) -> str:
             [Colors.PURPLE + "Active Cases: ", get_active_cases(country_row) + Colors.RESET],
             [Colors.ORANGE + "Serious or Critical: ", get_serious_cases(country_row) + Colors.RESET],
             [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
-            [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET]
+            [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET],
+            [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET]
         ]
     return tabulate(overview_data, colalign=("left", "right"))
 
@@ -214,7 +256,7 @@ def get_row(country: str = None) -> list:
     """Get the country_row that is to be passed as a parameter to other fucntions."""
     if country:
         try:
-            return outbreak_data[args.country.lower()]
+            return outbreak_data['table'][args.country.lower()]
         except KeyError:
             print("Country not found. So showing overview instead.")
             return total_row
@@ -251,3 +293,17 @@ if 'closed' in args_dict:
 
 if data:
     print(tabulate(data, colalign=("left", "right")))
+
+if 'table' in args_dict:
+    table = []
+    for key in outbreak_data['table']:
+        new_list = outbreak_data['table'][key]
+        new_list.insert(0, key.title())
+        table.append(new_list)
+    print(tabulate(table, headers=["Country", "Cases", "Cases Today", "Deaths", "Deaths Today", "Recovered",
+                                   "Active", "Critical", "Cases per 1M", "Deaths per 1M"], tablefmt="fancy_grid"))
+
+if 'news' in args_dict:
+    print(f"News from {outbreak_data['time']}")
+    for line in outbreak_data['news']:
+        print(Colors.BOLD + Colors.BLUE + " ->  " + Colors.RESET + line)
