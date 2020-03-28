@@ -15,6 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with corona.py.  If not, see <http://www.gnu.org/licenses/>.
+"""conora.py is a CLI tool to view statistics of the coronavirus outbreak."""
 
 
 import argparse
@@ -23,6 +24,8 @@ from functools import lru_cache
 import locale
 import json
 import os
+import textwrap
+import sys
 
 import appdirs
 import bs4
@@ -56,26 +59,35 @@ class Colors:
     LIGHT_BLUE = '\033[94m'
     LIGHT_CYAN = '\033[96m'
 
+    def color_red(self, text):
+        """Color a string red."""
+        return self.RED + text + self.RESET
+
+    def color_blue(self, text):
+        """Color a string blue."""
+        return self.BLUE + text + self.RESET
+
 
 locale.setlocale(locale.LC_ALL, '')
-parser = argparse.ArgumentParser(
+PARSER = argparse.ArgumentParser(
     prog="corona.py",
     description="Get up-to-date statistics about the Coronavirus outbreak",
     argument_default=argparse.SUPPRESS
 )
-parser.add_argument("-l", "--latest", help="Today's incidents", action="store_true")
-parser.add_argument("-o", "--offline", help="Run in offline mode", action="store_true")
-parser.add_argument("-c", "--closed", help="Number of closed cases, closed either by death or by recovery",
+PARSER.add_argument("-t", "--table", help="Print the complete table", action="store_true")
+PARSER.add_argument("-n", "--news", help="Print today's news", const='', action="store", nargs='?', type=str)
+PARSER.add_argument("-o", "--offline", help="Run in offline mode", action="store_true")
+PARSER.add_argument("-l", "--latest", help="Today's incidents", action="store_true")
+PARSER.add_argument("-c", "--closed", help="Number of closed cases, closed either by death or by recovery",
                     action="store_true")
-parser.add_argument("-a", "--active", help="Number of patients in treatment", action="store_true")
-parser.add_argument("-r", "--recovered", help="Number of recovered patients", action="store_true")
-parser.add_argument("-d", "--dead", help="Number of deaths that have occurred, in total and today", action="store_true")
-parser.add_argument("-s", "--serious", help="Number of patients in critical or serious conditions", action="store_true")
-parser.add_argument("-t", "--table", help="Print the complete table", action="store_true")
-parser.add_argument("-n", "--news", help="Print today's news", action="store_true")
-parser.add_argument("country", nargs='?', type=str, help="Country to show data of; if not given, global stats is shown")
-args = parser.parse_args()
-args_dict = vars(args)
+PARSER.add_argument("-a", "--active", help="Number of patients in treatment", action="store_true")
+PARSER.add_argument("-r", "--recovered", help="Number of recovered patients", action="store_true")
+PARSER.add_argument("-d", "--dead", help="Number of deaths that have occurred, in total and today", action="store_true")
+PARSER.add_argument("-s", "--serious", help="Number of patients in critical or serious conditions", action="store_true")
+PARSER.add_argument("country", nargs='?', type=str, help="Country to show data of; if not given, global stats is shown")
+ARGS = PARSER.parse_args()
+args_dict = vars(ARGS)
+columns, _rows = os.get_terminal_size(0)
 
 cache_dir = appdirs.user_cache_dir('coronapy', appauthor=False)
 cache_file_path = os.path.join(cache_dir, 'data.json')
@@ -84,32 +96,41 @@ cache_file_path = os.path.join(cache_dir, 'data.json')
 def get_online_outbreak_data() -> dict:
     """Get data of the outbreak from the Worldometers.info site."""
     try:
-        url = "https://www.worldometers.info/coronavirus"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
                           'Chrome/70.0.3538.77 Safari/537.36'
         }
 
-        r = requests.get(url, headers=headers)
-        soup = bs4.BeautifulSoup(r.text, 'lxml')
-        table = soup.find('table')
-        rows = table.find_all('tr')
+        request = requests.get("https://www.worldometers.info/coronavirus", headers=headers)
+        soup = bs4.BeautifulSoup(request.text, 'lxml')
+        rows = soup.find('table').find_all('tr')
 
         # Prepare a dictionary with all the data needed.
         online_outbreak_table = {}
 
-        for tr in rows:
-            td = tr.find_all('td')
-            table_row = [e.text for e in td]
-            if table_row:
-                online_outbreak_table.setdefault(table_row[0].lower(), table_row[1:])
+        for table_row in rows:
+            table_row_list = [e.text for e in table_row.find_all('td')]
+            if table_row_list:
+                online_outbreak_table.setdefault(table_row_list[0].lower(), table_row_list[1:])
 
         try:
             news_div = soup.find('div', {'id': 'newsdate' + datetime.now(timezone.utc).strftime("%Y-%m-%d")})
-            news_li = news_div.find_all('li')
-            news_table = [new.text.replace('[source]', '').strip() for new in news_li]
-        except AttributeError:
+            clean_list = {
+                '[source]': '',
+                '[video]': '',
+                '  ': '',
+                ' .': '.'
+            }
             news_table = []
+            for new in news_div.find_all('li'):
+                news_text = new.text
+                if new.find('img', {'alt': 'alert'}):
+                    news_text = '⚠️ ' + news_text
+                for item in clean_list:
+                    news_text = news_text.replace(item, clean_list[item]).strip()
+                news_table.append(news_text)
+        except AttributeError:
+            pass
 
         online_outbreak_data = {
             'time': datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -139,6 +160,21 @@ def get_offline_outbreak_data() -> dict:
         return None
 
 
+if 'news' in args_dict:
+    alerts_only = False
+    if args_dict['news'] == 'a':
+        upper_limit = 0
+        lower_limit = -1
+        alerts_only = True
+    else:
+        try:
+            upper_limit = int(args_dict['news'].rpartition(':')[0] or 0)
+            lower_limit = int(args_dict['news'].rpartition(':')[2] or -1)
+        except ValueError:
+            PARSER.print_usage()
+            print("\nIvalid arguments. '--news' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
+            sys.exit(1)
+
 if 'offline' in args_dict:
     outbreak_data = get_offline_outbreak_data()
     del args_dict['offline']  # Delete dictionary item that has served its purpose.
@@ -146,7 +182,7 @@ else:
     outbreak_data = get_online_outbreak_data() or get_offline_outbreak_data()
 
 if outbreak_data is None:
-    exit()
+    sys.exit(1)
 
 total_row = outbreak_data['table']["total:"]
 
@@ -237,17 +273,17 @@ def get_closed_cases(country_row: list = None) -> str:
 def get_situation(country_row: list = None) -> str:
     """Get details of the current situation in prettified, printable form."""
     overview_data = [
-            [Colors.BOLD + "Total Cases: ", get_total_cases(country_row) + Colors.RESET],
-            [Colors.YELLOW + "New Cases: ", get_new_cases(country_row) + Colors.RESET],
-            [Colors.RED + "Total Deaths: ", get_total_deaths(country_row) + Colors.RESET],
-            [Colors.RED + "New Deaths: ", get_new_deaths(country_row) + Colors.RESET],
-            [Colors.GREEN + "Total Recovered: ", get_total_recovered(country_row) + Colors.RESET],
-            [Colors.PURPLE + "Active Cases: ", get_active_cases(country_row) + Colors.RESET],
-            [Colors.ORANGE + "Serious or Critical: ", get_serious_cases(country_row) + Colors.RESET],
-            [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
-            [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET],
-            [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET]
-        ]
+        [Colors.BOLD + "Total Cases: ", get_total_cases(country_row) + Colors.RESET],
+        [Colors.YELLOW + "New Cases: ", get_new_cases(country_row) + Colors.RESET],
+        [Colors.RED + "Total Deaths: ", get_total_deaths(country_row) + Colors.RESET],
+        [Colors.RED + "New Deaths: ", get_new_deaths(country_row) + Colors.RESET],
+        [Colors.GREEN + "Total Recovered: ", get_total_recovered(country_row) + Colors.RESET],
+        [Colors.PURPLE + "Active Cases: ", get_active_cases(country_row) + Colors.RESET],
+        [Colors.ORANGE + "Serious or Critical: ", get_serious_cases(country_row) + Colors.RESET],
+        [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
+        [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET],
+        [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET]
+    ]
     return tabulate(overview_data, colalign=("left", "right"))
 
 
@@ -256,19 +292,18 @@ def get_row(country: str = None) -> list:
     """Get the country_row that is to be passed as a parameter to other fucntions."""
     if country:
         try:
-            return outbreak_data['table'][args.country.lower()]
+            return outbreak_data['table'][args_dict['country'].lower()]
         except KeyError:
             print("Country not found. So showing overview instead.")
             return total_row
     return total_row
 
 
-country = getattr(args, 'country', None)
-row = get_row(country)
+row = get_row(args_dict.get('country'))
 
 if len(args_dict) == 0 or (len(args_dict) == 1 and 'country' in args_dict):
     print(get_situation(row))
-    exit()
+    sys.exit()
 
 data = []
 
@@ -304,6 +339,14 @@ if 'table' in args_dict:
                                    "Active", "Critical", "Cases per 1M", "Deaths per 1M"], tablefmt="fancy_grid"))
 
 if 'news' in args_dict:
-    print(f"News from {outbreak_data['time']}")
-    for line in outbreak_data['news']:
-        print(Colors.BOLD + Colors.BLUE + " ->  " + Colors.RESET + line)
+    if outbreak_data['news']:
+        print(f"News from {outbreak_data['time']}")
+        for sentence in outbreak_data['news'][upper_limit:lower_limit]:
+            if not alerts_only or '⚠️' in sentence:
+                lines = textwrap.wrap(sentence, columns - 5)
+                print(f"{Colors.BOLD}{Colors().color_blue(' ->  ')}"
+                      f"{lines[0].replace('⚠️', Colors().color_red('⚠️'))}")
+                for line in lines[1:]:
+                    print("     " + line)
+    else:
+        print("No news available.")
