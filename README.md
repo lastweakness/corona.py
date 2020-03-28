@@ -11,8 +11,8 @@ The output is colored, tabulated and easily understood. There is also a basic fo
 * No arguments : Shows overall data of the World. You can also give `country` as 'total:' and get the same result.
 * Only `country` : Shows overall data of the country
 * `--offline (-o)` : Uses pre-downloaded cache for the outbreak data if possible.
-* `--table (-t)` : Gives the complete table of infected countries and related details.
 * `--news (-n)` : Gives news such as recent infections and other major events. It can take an argument in the form of an integer 'n' or the form 'm:n' where m and n are integers. If only 'n' is given without a colon, the latest 'n' news is printed. When a colon is used, it behaves similar to slicing in Python, so ':n' is equivalent to just 'n', 'm:' gives the earliest news of the day starting from the mth item and 'm:n' gives all news between the mth item and nth item. Passing just 'a' as an argument will only print the most important news (denoted by an alert or warning icon).
+* `--table (-t)` : Gives the complete table of infected countries and related details. Can be sliced just like '--news'.
 * `--latest (-l)` : Shows the total events today, i.e. new cases and deaths. If `country` is given, it is limited to the country's statistics.
 * `--active (-a)` : Shows the number of active cases. If `country` is given, it is limited to the country's statistics.
 * `--closed (-c)` : Shows the number of closed cases. If `country` is given, it is limited to the country's statistics.

@@ -74,7 +74,7 @@ PARSER = argparse.ArgumentParser(
     description="Get up-to-date statistics about the Coronavirus outbreak",
     argument_default=argparse.SUPPRESS
 )
-PARSER.add_argument("-t", "--table", help="Print the complete table", action="store_true")
+PARSER.add_argument("-t", "--table", help="Print the complete table", const='', action="store", nargs='?', type=str)
 PARSER.add_argument("-n", "--news", help="Print today's news", const='', action="store", nargs='?', type=str)
 PARSER.add_argument("-o", "--offline", help="Run in offline mode", action="store_true")
 PARSER.add_argument("-l", "--latest", help="Today's incidents", action="store_true")
@@ -126,8 +126,9 @@ def get_online_outbreak_data() -> dict:
                 news_text = new.text
                 if new.find('img', {'alt': 'alert'}):
                     news_text = '⚠️ ' + news_text
-                for item in clean_list:
-                    news_text = news_text.replace(item, clean_list[item]).strip()
+                for to_replace, replace_with in clean_list.items():
+                    news_text = news_text.replace(to_replace, replace_with).strip()
+
                 news_table.append(news_text)
         except AttributeError:
             pass
@@ -163,17 +164,26 @@ def get_offline_outbreak_data() -> dict:
 if 'news' in args_dict:
     alerts_only = False
     if args_dict['news'] == 'a':
-        upper_limit = 0
-        lower_limit = -1
+        news_upper_limit = 0
+        news_lower_limit = -1
         alerts_only = True
     else:
         try:
-            upper_limit = int(args_dict['news'].rpartition(':')[0] or 0)
-            lower_limit = int(args_dict['news'].rpartition(':')[2] or -1)
+            news_upper_limit = int(args_dict['news'].rpartition(':')[0] or 0)
+            news_lower_limit = int(args_dict['news'].rpartition(':')[2] or -1)
         except ValueError:
             PARSER.print_usage()
             print("\nIvalid arguments. '--news' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
             sys.exit(1)
+
+if 'table' in args_dict:
+    try:
+        table_upper_limit = int(args_dict['table'].rpartition(':')[0] or 0)
+        table_lower_limit = int(args_dict['table'].rpartition(':')[2] or -1)
+    except ValueError:
+        PARSER.print_usage()
+        print("\nIvalid arguments. '--table' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
+        sys.exit(1)
 
 if 'offline' in args_dict:
     outbreak_data = get_offline_outbreak_data()
@@ -335,13 +345,15 @@ if 'table' in args_dict:
         new_list = outbreak_data['table'][key]
         new_list.insert(0, key.title())
         table.append(new_list)
-    print(tabulate(table, headers=["Country", "Cases", "Cases Today", "Deaths", "Deaths Today", "Recovered",
-                                   "Active", "Critical", "Cases per 1M", "Deaths per 1M"], tablefmt="fancy_grid"))
+    print(tabulate(table[table_upper_limit:table_lower_limit], headers=[
+        "Country", "Cases", "Cases Today", "Deaths", "Deaths Today", "Recovered",
+        "Active", "Critical", "Cases per 1M", "Deaths per 1M"
+    ], tablefmt="fancy_grid"))
 
 if 'news' in args_dict:
     if outbreak_data['news']:
         print(f"News from {outbreak_data['time']}")
-        for sentence in outbreak_data['news'][upper_limit:lower_limit]:
+        for sentence in outbreak_data['news'][news_upper_limit:news_lower_limit]:
             if not alerts_only or '⚠️' in sentence:
                 lines = textwrap.wrap(sentence, columns - 5)
                 print(f"{Colors.BOLD}{Colors().color_blue(' ->  ')}"
