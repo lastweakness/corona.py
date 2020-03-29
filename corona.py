@@ -107,9 +107,8 @@ def get_online_outbreak_data() -> dict:
 
         # Prepare a dictionary with all the data needed.
         online_outbreak_table = {}
-
         for table_row in rows:
-            table_row_list = [e.text for e in table_row.find_all('td')]
+            table_row_list = [e.text.strip('+ \n') for e in table_row.find_all('td')]
             if table_row_list:
                 online_outbreak_table.setdefault(table_row_list[0].lower(), table_row_list[1:])
 
@@ -172,8 +171,7 @@ if 'news' in args_dict:
             news_upper_limit = int(args_dict['news'].rpartition(':')[0] or 0)
             news_lower_limit = int(args_dict['news'].rpartition(':')[2] or -1)
         except ValueError:
-            PARSER.print_usage()
-            print("\nIvalid arguments. '--news' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
+            PARSER.error("Ivalid arguments. '--news' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
             sys.exit(1)
 
 if 'table' in args_dict:
@@ -181,8 +179,7 @@ if 'table' in args_dict:
         table_upper_limit = int(args_dict['table'].rpartition(':')[0] or 0)
         table_lower_limit = int(args_dict['table'].rpartition(':')[2] or -1)
     except ValueError:
-        PARSER.print_usage()
-        print("\nIvalid arguments. '--table' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
+        PARSER.error("Ivalid arguments. '--table' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
         sys.exit(1)
 
 if 'offline' in args_dict:
@@ -200,7 +197,7 @@ total_row = outbreak_data['table']["total:"]
 def get_data(input_list: list, index: int) -> str:
     """Get data from the list."""
     if input_list[index]:
-        cleaned = input_list[index].strip('+').replace(',', '')
+        cleaned = input_list[index].replace(',', '')
         try:
             cleaned = '{:n}'.format(int(cleaned))
         except ValueError:
@@ -273,6 +270,13 @@ def get_deaths_by_pop(country_row: list = None) -> str:
     return get_data(total_row, 8) or '-'
 
 
+def get_first_case(country_row: list = None) -> str:
+    """Get the date of first case reported."""
+    if country_row:
+        return get_data(country_row, 9) or '-'
+    return get_data(total_row, 9) or '-'
+
+
 def get_closed_cases(country_row: list = None) -> str:
     """Get the number of cases that have been closed, either by death or by recovery."""
     total_cases = get_total_cases(country_row).replace(',', '')
@@ -292,7 +296,8 @@ def get_situation(country_row: list = None) -> str:
         [Colors.ORANGE + "Serious or Critical: ", get_serious_cases(country_row) + Colors.RESET],
         [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
         [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET],
-        [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET]
+        [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET],
+        [Colors.BLUE + "1st Case: ", get_first_case(country_row) + Colors.RESET]
     ]
     return tabulate(overview_data, colalign=("left", "right"))
 
@@ -347,7 +352,7 @@ if 'table' in args_dict:
         table.append(new_list)
     print(tabulate(table[table_upper_limit:table_lower_limit], headers=[
         "Country", "Cases", "Cases Today", "Deaths", "Deaths Today", "Recovered",
-        "Active", "Critical", "Cases per 1M", "Deaths per 1M"
+        "Active", "Critical", "Cases per 1M", "Deaths per 1M", "1st Case"
     ], tablefmt="fancy_grid"))
 
 if 'news' in args_dict:
