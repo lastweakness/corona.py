@@ -117,6 +117,32 @@ def get_news(soup):
     return news_table
 
 
+def zero_checker(integer_string):
+    """Return proper integer values from strings containing only integers."""
+    if integer_string == '':
+        return None
+    try:
+        output = int(integer_string)
+        return output
+    except ValueError as error:
+        print("Something went wrong here. This wasn't supposed to happen...")
+        print(error)
+        sys.exit(1)
+
+
+def float_zero_checker(float_string):
+    """Return proper float values from strings containing only float values."""
+    if float_string == '':
+        return None
+    try:
+        output = float(float_string)
+        return output
+    except ValueError as error:
+        print("Something went wrong here. This wasn't supposed to happen...")
+        print(error)
+        sys.exit(1)
+
+
 def get_table(soup):
     """Get the latest news from the website data."""
     rows = soup.find('table').find_all('tr')
@@ -127,16 +153,18 @@ def get_table(soup):
     for table_row in rows:
         table_row_list = []
         for row_text in table_row.find_all('td'):
-            if len(table_row_list) in (0, 8, 9, 10):
+            if len(table_row_list) == 0:
                 table_row_list.append(row_text.text.strip('+ \n'))
+            elif len(table_row_list) in (8, 9):
+                table_row_list.append(float_zero_checker(row_text.text.strip('+ \n').replace(',', '')))
             else:
-                table_row_list.append(int(row_text.text.strip('+ \n').replace(',', '') or 0) or None)
+                table_row_list.append(zero_checker(row_text.text.strip('+ \n').replace(',', '')))
         if table_row_list:
             online_outbreak_list.append(table_row_list)
 
     online_outbreak_dataframe = DataFrame(online_outbreak_list, columns=[
-        "Country", "Cases", "New Cases", "Deaths", "New Deaths", "Recovered", "Active",
-        "Serious", "Cases/1M", "Deaths/1M", "1st Case"
+        "Country", "Cases", "New Cases", "Deaths", "New Deaths",
+        "Recovered", "Active", "Serious", "Cases/1M", "Deaths/1M",
     ])
     online_outbreak_dataframe.sort_values(by='Cases', ascending=False, inplace=True)
     online_outbreak_dataframe.reset_index(drop=True, inplace=True)
@@ -190,24 +218,37 @@ def get_offline_outbreak_data():
         return None
 
 
+def converter(input_string):
+    """Convert the input string to slicing integers."""
+    if input_string == '':
+        return None
+    return int(input_string)
+
+
 if 'news' in args_dict:
     alerts_only = False
     if args_dict['news'] == 'a':
-        news_upper_limit = 0
-        news_lower_limit = -1
+        news_lower_limit = None
+        news_upper_limit = None
         alerts_only = True
     else:
         try:
-            news_upper_limit = int(args_dict['news'].rpartition(':')[0] or 0)
-            news_lower_limit = int(args_dict['news'].rpartition(':')[2] or -1)
+            news_lower_limit = converter(args_dict['news'].rpartition(':')[0])
+            if news_lower_limit is not None:
+                news_upper_limit = converter(args_dict['news'].rpartition(':')[2]) + 1
+            else:
+                news_upper_limit = converter(args_dict['news'].rpartition(':')[2])
         except ValueError:
             PARSER.error("Ivalid arguments. '--news' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
             sys.exit(1)
 
 if 'table' in args_dict:
     try:
-        table_upper_limit = int(args_dict['table'].rpartition(':')[0] or 0)
-        table_lower_limit = int(args_dict['table'].rpartition(':')[2] or -1)
+        table_lower_limit = converter(args_dict['table'].rpartition(':')[0])
+        if table_lower_limit is not None:
+            table_upper_limit = converter(args_dict['table'].rpartition(':')[2]) + 1
+        else:
+            table_upper_limit = converter(args_dict['table'].rpartition(':')[2])
     except ValueError:
         PARSER.error("Ivalid arguments. '--table' takes arguments in the forms 'm:n', ':n', 'm:' or 'm'.")
         sys.exit(1)
@@ -233,7 +274,9 @@ def get_sorting():
         'nd': 'New Deaths',
         'r': 'Recovered',
         'a': 'Active',
-        's': 'Serious'
+        's': 'Serious',
+        'c/p': 'Cases/1M',
+        'd/p': 'Deaths/1M',
     }
     return switch_dict.get(args_dict['sort'], 'Cases')
 
@@ -249,10 +292,13 @@ def get_data(input_list, index):
     """Get data from the list."""
     if input_list[index]:
         try:
-            cleaned = '{:n}'.format(int(input_list[index]))
+            if isinstance(input_list[index], float):
+                cleaned = '{:n}'.format(input_list[index])
+            else:
+                cleaned = '{:n}'.format(int(input_list[index]))
         except ValueError:
             cleaned = input_list[index]
-        return cleaned.strip().replace('nan', '')
+        return str(cleaned).strip().replace('nan', '')
     return None
 
 
@@ -320,11 +366,12 @@ def get_deaths_by_pop(country_row):
     return get_data(total_row, 9) or '-'
 
 
-def get_first_case(country_row):
-    """Get the date of first case reported."""
-    if country_row is not None:
-        return get_data(country_row, 10) or '-'
-    return get_data(total_row, 10) or '-'
+# This was removed in an update of their site.
+# def get_first_case(country_row):
+#     """Get the date of first case reported."""
+#     if country_row is not None:
+#         return get_data(country_row, 10) or '-'
+#     return get_data(total_row, 10) or '-'
 
 
 def get_closed_cases(country_row):
@@ -347,7 +394,7 @@ def get_situation(country_row):
         [Colors.CYAN + "Total Closed Cases: ", get_closed_cases(country_row) + Colors.RESET],
         [Colors.LIGHT_GRAY + "Cases/1M Pop: ", get_cases_by_pop(country_row) + Colors.RESET],
         [Colors.LIGHT_RED + "Deaths/1M Pop: ", get_deaths_by_pop(country_row) + Colors.RESET],
-        [Colors.BLUE + "1st Case: ", get_first_case(country_row) + Colors.RESET]
+        # [Colors.BLUE + "1st Case: ", get_first_case(country_row) + Colors.RESET]
     ]
     return tabulate(overview_data, colalign=("left", "right"))
 
@@ -398,7 +445,10 @@ if data:
 def localize(input_data):
     """Localize the data."""
     try:
-        output_data = '{:n}'.format(int(input_data))
+        if not isinstance(input_data, float):
+            output_data = '{:n}'.format(int(input_data))
+        else:
+            output_data = '{:n}'.format(float(input_data))
     except ValueError:
         output_data = input_data
     return output_data
@@ -406,8 +456,8 @@ def localize(input_data):
 
 if 'table' in args_dict:
     na_position = 'first' if ascending else 'last'
-    to_print = table[1:].sort_values(by=sorting, ascending=ascending,
-                                     na_position=na_position)[table_upper_limit:table_lower_limit]
+    slicer = slice(table_lower_limit, table_upper_limit, 1)
+    to_print = table[1:].sort_values(by=sorting, ascending=ascending, na_position=na_position)[slicer]
     to_print = to_print.applymap(localize)
     to_print.reset_index(drop=True, inplace=True)
     to_print.index += 1
@@ -415,8 +465,8 @@ if 'table' in args_dict:
         to_print,
         tablefmt="fancy_grid", headers='keys',
         colalign=[
-            'left', 'left', 'right', 'right', 'right', 'right', 'right', 'right',
-            'right', 'right', 'right', 'right'
+            'left', 'left', 'right', 'right', 'right', 'right',
+            'right', 'right', 'right', 'right', 'right',
         ]
     ).replace('nan', '   '))
 
@@ -432,11 +482,14 @@ def wrap(text):
 if 'news' in args_dict:
     if outbreak_data['news']:
         print(f"News from {outbreak_data['time']}")
-        for sentence in outbreak_data['news'][news_upper_limit:news_lower_limit]:
+        slicer = slice(news_lower_limit, news_upper_limit, 1)
+        for sentence in outbreak_data['news'][slicer]:
             if not alerts_only or '⚠' in sentence:
                 lines = wrap(sentence)
-                print(f"{Colors.BOLD}{Colors().color_blue(' ->  ')}"
-                      f"{lines[0].replace('⚠', Colors().color_red('⚠'))}")
+                print(
+                    f"{Colors.BOLD} {Colors().color_blue('->')}  "
+                    f"{lines[0].replace('⚠', Colors().color_red('⚠'))}"
+                )
                 for line in lines[1:]:
                     print("     " + line)
     else:

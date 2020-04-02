@@ -4,7 +4,7 @@ A Python script that tries to provide up-to-date data about the Coronavirus outb
 
 The output is colored, tabulated and easily understood. There is also a basic form of caching so that you get to view previously downloaded statistics even if you have no network access.
 
-![Example of basic usage](screenshot.png)
+![Outdated screenshot without any of the new features...](screenshot.png)
 
 ## Usage
 
@@ -21,6 +21,8 @@ The output is colored, tabulated and easily understood. There is also a basic fo
   * `r`: Recovered
   * `a`: Active
   * `s`: Serious
+  * `c/p`: Cases Per 1M population
+  * `d/p`: Deaths Per 1M population
   * `n`: Name of Country from Z-A
   * Adding `a` to the end of any of them will sort the list in the opposite order.
   * If none of the above, it automatically defaults to sorting by Cases.
