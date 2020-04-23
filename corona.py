@@ -119,7 +119,7 @@ def get_news(soup):
 
 def zero_checker(integer_string):
     """Return proper integer values from strings containing only integers."""
-    if integer_string == '':
+    if integer_string == '' or integer_string == 'N/A':
         return None
     try:
         output = int(integer_string)
@@ -132,7 +132,7 @@ def zero_checker(integer_string):
 
 def float_zero_checker(float_string):
     """Return proper float values from strings containing only float values."""
-    if float_string == '':
+    if float_string == '' or float_string == 'N/A':
         return None
     try:
         output = float(float_string)
@@ -141,6 +141,14 @@ def float_zero_checker(float_string):
         print("Something went wrong here. This wasn't supposed to happen...")
         print(error)
         sys.exit(1)
+
+
+def get_table_row(row_text, length):
+    if length in (0, 12):
+        return(row_text.text.strip('+ \n'))
+    if length in (8, 9):
+        return(float_zero_checker(row_text.text.strip('+ \n').replace(',', '')))
+    return(zero_checker(row_text.text.strip('+ \n').replace(',', '')))
 
 
 def get_table(soup):
@@ -152,19 +160,27 @@ def get_table(soup):
 
     for table_row in rows:
         table_row_list = []
-        for row_text in table_row.find_all('td'):
-            if len(table_row_list) == 0:
-                table_row_list.append(row_text.text.strip('+ \n'))
-            elif len(table_row_list) in (8, 9):
-                table_row_list.append(float_zero_checker(row_text.text.strip('+ \n').replace(',', '')))
-            else:
-                table_row_list.append(zero_checker(row_text.text.strip('+ \n').replace(',', '')))
+        for row_text in table_row.find_all('td')[:13]:
+            table_row_list.append(get_table_row(row_text, len(table_row_list)))
         if table_row_list:
+            if table_row.attrs.get('style', None) == 'background-color:#EAF7D5':
+                table_row_list.append('Recovered')
+            elif table_row.attrs.get('style', None) == 'background-color:#F0F0F0':
+                table_row_list.append('Outcome')
+            else:
+                table_row_list.append(None)
+
+            if 'total_row' and 'row_continent' in table_row.attrs.get('class', []):
+                table_row_list.append('Total')
+            else:
+                table_row_list.append(None)
+
             online_outbreak_list.append(table_row_list)
 
     online_outbreak_dataframe = DataFrame(online_outbreak_list, columns=[
         "Country", "Cases", "New Cases", "Deaths", "New Deaths",
         "Recovered", "Active", "Serious", "Cases/1M", "Deaths/1M",
+        "Total Tests", "Tests/1M", "Continent", "State", "Class",
     ])
     online_outbreak_dataframe.sort_values(by='Cases', ascending=False, inplace=True)
     online_outbreak_dataframe.reset_index(drop=True, inplace=True)
@@ -457,7 +473,15 @@ def localize(input_data):
 if 'table' in args_dict:
     na_position = 'first' if ascending else 'last'
     slicer = slice(table_lower_limit, table_upper_limit, 1)
-    to_print = table[1:].sort_values(by=sorting, ascending=ascending, na_position=na_position)[slicer]
+    to_print = table
+    for items in to_print.itertuples(name=None):
+        if 'Total' in items:
+            to_print.drop(items[0], axis=0, inplace=True)
+    to_print = to_print.sort_values(
+        by=sorting,
+        ascending=ascending,
+        na_position=na_position
+    )[slicer].drop(["State", "Class"], axis=1)
     to_print = to_print.applymap(localize)
     to_print.reset_index(drop=True, inplace=True)
     to_print.index += 1
@@ -466,7 +490,7 @@ if 'table' in args_dict:
         tablefmt="fancy_grid", headers='keys',
         colalign=[
             'left', 'left', 'right', 'right', 'right', 'right',
-            'right', 'right', 'right', 'right', 'right',
+            'right', 'right', 'right', 'right', 'right', 'right'
         ]
     ).replace('nan', '   '))
 
