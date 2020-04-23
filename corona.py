@@ -119,7 +119,7 @@ def get_news(soup):
 
 def zero_checker(integer_string):
     """Return proper integer values from strings containing only integers."""
-    if integer_string == '' or integer_string == 'N/A':
+    if integer_string in ('', 'N/A'):
         return None
     try:
         output = int(integer_string)
@@ -132,7 +132,7 @@ def zero_checker(integer_string):
 
 def float_zero_checker(float_string):
     """Return proper float values from strings containing only float values."""
-    if float_string == '' or float_string == 'N/A':
+    if float_string in ('', 'N/A'):
         return None
     try:
         output = float(float_string)
