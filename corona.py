@@ -144,11 +144,12 @@ def float_zero_checker(float_string):
 
 
 def get_table_row(row_text, length):
+    """Return cleaned and converted data from table rows."""
     if length in (0, 12):
-        return(row_text.text.strip('+ \n'))
+        return row_text.text.strip('+ \n')
     if length in (8, 9):
-        return(float_zero_checker(row_text.text.strip('+ \n').replace(',', '')))
-    return(zero_checker(row_text.text.strip('+ \n').replace(',', '')))
+        return float_zero_checker(row_text.text.strip('+ \n').replace(',', ''))
+    return zero_checker(row_text.text.strip('+ \n').replace(',', ''))
 
 
 def get_table(soup):
